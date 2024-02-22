@@ -11,7 +11,7 @@ from aioprometheus.asgi.starlette import metrics
 import fastapi
 import uvicorn
 from http import HTTPStatus
-from fastapi import Request
+from fastapi import Request, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, Response
@@ -24,6 +24,11 @@ from vllm.logger import init_logger
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
 from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
 from vllm.entrypoints.openai.serving_engine import LoRA
+
+import sys
+sys.path.insert(0, '/home/swissllm/meilenbot')
+
+from meilenbot.utils.authentication import authenticate_token, get_auth_toks
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds
 
@@ -152,20 +157,22 @@ async def validation_exception_handler(_, exc):
 
 
 @app.get("/health")
-async def health() -> Response:
+async def health(token: str = Depends(authenticate_token), auth_toks: list = Depends(get_auth_toks)) -> Response:
     """Health check."""
     return Response(status_code=200)
 
 
 @app.get("/v1/models")
-async def show_available_models():
+async def show_available_models(token: str = Depends(authenticate_token), auth_toks: list = Depends(get_auth_toks)):
     models = await openai_serving_chat.show_available_models()
     return JSONResponse(content=models.model_dump())
 
 
 @app.post("/v1/chat/completions")
 async def create_chat_completion(request: ChatCompletionRequest,
-                                 raw_request: Request):
+                                 raw_request: Request,
+                                 token: str = Depends(authenticate_token),
+                                 auth_toks: list = Depends(get_auth_toks)):
     generator = await openai_serving_chat.create_chat_completion(
         request, raw_request)
     if isinstance(generator, ErrorResponse):
@@ -179,7 +186,10 @@ async def create_chat_completion(request: ChatCompletionRequest,
 
 
 @app.post("/v1/completions")
-async def create_completion(request: CompletionRequest, raw_request: Request):
+async def create_completion(request: CompletionRequest,
+                            raw_request: Request,
+                            token: str = Depends(authenticate_token),
+                            auth_toks: list = Depends(get_auth_toks)):
     generator = await openai_serving_completion.create_completion(
         request, raw_request)
     if isinstance(generator, ErrorResponse):
